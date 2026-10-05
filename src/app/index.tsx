@@ -38,7 +38,7 @@ function SupabaseStatus() {
   }, []);
 
   const label = !isSupabaseConfigured
-    ? 'env not set'
+    ? 'env not set or invalid'
     : status === 'checking'
       ? 'checking…'
       : status;

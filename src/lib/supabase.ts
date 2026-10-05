@@ -1,33 +1,38 @@
 import 'react-native-url-polyfill/auto';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient, processLock } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
+function isHttpUrl(value: string | undefined): value is string {
+  return !!value && /^https?:\/\/[^\s/]+/.test(value);
+}
+
+export const isSupabaseConfigured = isHttpUrl(supabaseUrl) && Boolean(supabaseKey);
 
 if (!isSupabaseConfigured) {
   console.warn(
-    'Supabase env vars are missing. Copy .env.example to .env.local and fill in your project values.'
+    'Supabase env vars are missing or invalid. EXPO_PUBLIC_SUPABASE_URL must look like ' +
+      'https://<project-ref>.supabase.co and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY must be set.'
   );
 }
 
 // During static web rendering there is no `window`, so skip persistent storage there.
 const isServer = Platform.OS === 'web' && typeof window === 'undefined';
 
+// Fall back to placeholders so a bad config doesn't crash the whole app on startup.
 export const supabase = createClient(
-  supabaseUrl ?? 'http://localhost:54321',
-  supabaseKey ?? 'missing-key',
+  isSupabaseConfigured ? supabaseUrl! : 'http://localhost:54321',
+  isSupabaseConfigured ? supabaseKey! : 'missing-key',
   {
     auth: {
       ...(isServer ? {} : { storage: AsyncStorage }),
       autoRefreshToken: !isServer,
       persistSession: !isServer,
       detectSessionInUrl: false,
-      lock: processLock,
     },
   }
 );
