@@ -51,6 +51,16 @@ npm run db:types                    # src/lib/database.types.ts 타입 생성
 | `supabase/config.toml` | Supabase CLI 설정 |
 | `supabase/migrations/` | DB 마이그레이션 SQL |
 
-## 빌드 / 배포
+## 웹 배포 (Vercel)
 
-앱스토어 빌드는 EAS를 사용합니다: `npx eas-cli@latest build`. 자세한 내용은 [EAS 문서](https://docs.expo.dev/eas/) 참고.
+현재는 웹 버전을 Vercel로 배포하며 개발합니다. 설정은 `vercel.json`에 있습니다.
+
+- `main`에 푸시 → 프로덕션 자동 배포
+- PR 생성 → PR별 미리보기 URL 자동 생성
+- 환경 변수는 Vercel Project Settings → Environment Variables에 등록
+  (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
+
+## 앱 전환 (추후)
+
+웹으로 기능이 어느 정도 갖춰지면 같은 코드로 EAS를 이용해 iOS/Android 앱을 빌드합니다:
+`npx eas-cli@latest build`. 자세한 내용은 [EAS 문서](https://docs.expo.dev/eas/) 참고.
