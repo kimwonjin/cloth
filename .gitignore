@@ -42,3 +42,8 @@ example
 # generated native folders
 /ios
 /android
+
+# e2e outputs
+e2e/photos/
+e2e/screenshots/
+e2e/test-results/
