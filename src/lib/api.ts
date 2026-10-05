@@ -15,9 +15,21 @@ import { supabase } from '@/lib/supabase';
 
 /** Thin data layer over Supabase. Screens call these instead of supabase directly. */
 
+type ApiError = { message: string; code?: string };
+
+/** Turns PostgREST / Storage errors into messages users can act on. */
+export function apiErrorMessage(error: ApiError): string {
+  if (error.code === 'PGRST116') return '찾을 수 없어요. 삭제되었거나 비공개로 바뀌었을 수 있어요.';
+  if (error.code === '42501' || /row-level security/i.test(error.message)) return '권한이 없어요.';
+  if (error.code === '23505') return '이미 처리된 요청이에요.';
+  if (/fetch|network/i.test(error.message)) return '서버에 연결하지 못했어요. 인터넷 연결을 확인해주세요.';
+  if (/exceeded the maximum allowed size|too large/i.test(error.message)) return '사진 용량이 너무 커요.';
+  return `문제가 생겼어요. (${error.code ?? error.message})`;
+}
+
 /** Throws on error. Mutations without `.select()` return null data, which callers ignore. */
-function check<T>(res: { data: T | null; error: { message: string } | null }): T {
-  if (res.error) throw new Error(res.error.message);
+function check<T>(res: { data: T | null; error: ApiError | null }): T {
+  if (res.error) throw new Error(apiErrorMessage(res.error));
   return res.data as T;
 }
 
@@ -166,7 +178,7 @@ export async function createOutfit(draft: OutfitDraft, opts: CreateOutfitOptions
   const res = await supabase.from('outfit_items').insert(rows);
   if (res.error) {
     await supabase.from('outfits').delete().eq('id', outfit.id);
-    throw new Error(res.error.message);
+    throw new Error(apiErrorMessage(res.error));
   }
   return outfit.id;
 }
