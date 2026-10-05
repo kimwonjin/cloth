@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { checkSupabaseConnection, isSupabaseConfigured } from '@/lib/supabase';
+import { checkSupabaseConnection, isSupabaseConfigured, supabaseHost } from '@/lib/supabase';
 
 function getDevMenuHint() {
   if (Platform.OS === 'web') {
@@ -31,17 +31,17 @@ function getDevMenuHint() {
 }
 
 function SupabaseStatus() {
-  const [status, setStatus] = useState<'checking' | 'connected' | 'failed'>('checking');
+  const [result, setResult] = useState<string | null>(null);
 
   useEffect(() => {
-    checkSupabaseConnection().then((ok) => setStatus(ok ? 'connected' : 'failed'));
+    checkSupabaseConnection().then(setResult);
   }, []);
 
-  const label = !isSupabaseConfigured
-    ? 'env not set or invalid'
-    : status === 'checking'
-      ? 'checking…'
-      : status;
+  let label: string;
+  if (!isSupabaseConfigured) label = 'env not set or invalid';
+  else if (result === null) label = 'checking…';
+  else if (result === 'ok') label = 'connected';
+  else label = `failed (${result}) · ${supabaseHost}`;
   return <ThemedText type="code">{label}</ThemedText>;
 }
 

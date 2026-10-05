@@ -48,15 +48,21 @@ if (Platform.OS !== 'web') {
   });
 }
 
-/** Pings the Supabase Auth health endpoint to verify URL and key. */
-export async function checkSupabaseConnection(): Promise<boolean> {
-  if (!isSupabaseConfigured) return false;
+/** Supabase host baked into this build, for showing on screen. */
+export const supabaseHost = isSupabaseConfigured ? new URL(supabaseUrl!).host : null;
+
+/**
+ * Pings the Supabase Auth health endpoint to verify URL and key.
+ * Returns 'ok', or a short reason such as 'HTTP 401' or 'network error'.
+ */
+export async function checkSupabaseConnection(): Promise<string> {
+  if (!isSupabaseConfigured) return 'not configured';
   try {
     const res = await fetch(`${supabaseUrl}/auth/v1/health`, {
       headers: { apikey: supabaseKey! },
     });
-    return res.ok;
+    return res.ok ? 'ok' : `HTTP ${res.status}`;
   } catch {
-    return false;
+    return 'network error';
   }
 }
