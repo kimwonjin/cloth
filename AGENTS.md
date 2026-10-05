@@ -39,3 +39,10 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Project workflow
+
+- Solo developer, cloud-only (no local machine). Push verified changes directly to `main`; no PRs needed.
+- Web-first: the app is developed and deployed as a web app on Vercel (`vercel.json`, auto-deploys from `main`). Native iOS/Android builds via EAS come later.
+- Backend is Supabase (cloud project). Client lives in `src/lib/supabase.ts`; schema changes go in `supabase/migrations/`.
+- Verify before pushing: `npx tsc --noEmit` and `npx expo export --platform web`.
