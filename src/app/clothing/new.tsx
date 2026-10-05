@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { ClothingForm, type ClothingFormValue } from '@/components/closet/clothing-form';
@@ -15,6 +15,7 @@ import { SEASONS, type Category } from '@/domain/types';
 import { useTheme } from '@/hooks/use-theme';
 import { createClothing } from '@/lib/api';
 import { processClothingPhoto } from '@/lib/image-processing';
+import { preloadSegmentation } from '@/lib/segment';
 import type { ProcessedClothingPhoto } from '@/lib/image-types';
 
 const EMPTY: ClothingFormValue = { category: null, color: 'etc', seasons: [...SEASONS], brand: '', size: '' };
@@ -28,6 +29,9 @@ export default function NewClothingScreen() {
   const [form, setForm] = useState<ClothingFormValue>(EMPTY);
   const [suggested, setSuggested] = useState<{ category?: Category; color?: string }>({});
   const [count, setCount] = useState(0);
+
+  // Start fetching the background-removal model while the user picks a photo.
+  useEffect(() => preloadSegmentation(), []);
 
   const pick = async (source: 'camera' | 'library') => {
     const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 1 };
@@ -113,8 +117,8 @@ export default function NewClothingScreen() {
         {processing && (
           <View style={styles.processing}>
             <ActivityIndicator />
-            <ThemedText type="small" themeColor="textSecondary">
-              배경을 지우고 색을 분석하는 중…
+            <ThemedText type="small" themeColor="textSecondary" style={styles.processingText}>
+              AI가 배경을 지우고 색을 분석하는 중…{'\n'}처음 한 번은 모델을 내려받느라 조금 걸려요
             </ThemedText>
           </View>
         )}
@@ -122,6 +126,12 @@ export default function NewClothingScreen() {
         {photo && (
           <>
             <View style={styles.previewWrap}>
+              {photo.cutout === 'ai' && (
+                <View style={[styles.badge, { backgroundColor: theme.backgroundElement }]} testID="cutout-ai">
+                  <Icon name="sparkles" size={14} />
+                  <ThemedText type="small">AI 배경 제거</ThemedText>
+                </View>
+              )}
               <Image
                 testID="clothing-preview"
                 source={{ uri: photo.image.previewUri }}
@@ -161,7 +171,9 @@ const styles = StyleSheet.create({
   guideTitle: { fontWeight: '700' },
   center: { textAlign: 'center', lineHeight: 22 },
   processing: { alignItems: 'center', padding: Spacing.six, gap: Spacing.two },
-  previewWrap: { alignItems: 'center' },
-  preview: { width: 260, height: 260, borderRadius: 16, backgroundColor: '#ffffff' },
+  processingText: { textAlign: 'center' },
+  previewWrap: { alignItems: 'center', gap: Spacing.two },
+  preview: { width: 260, height: 260, borderRadius: 16, backgroundColor: '#F3F3F5' },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   warning: { borderWidth: 1, borderRadius: 14, padding: Spacing.three, gap: Spacing.one + 2 },
 });

@@ -5,9 +5,9 @@ import type { Category } from './types';
  * Pure pixel-level helpers for turning a clothing photo into a clean card.
  * They operate on RGBA buffers so they run anywhere (canvas on web, tests in Node).
  *
- * Background removal here is a simple flood fill from the image border: it
- * works for clothes laid on a plain floor or hung against a plain wall. A real
- * segmentation API can replace it later.
+ * The garment matte normally comes from the U²-Netp model (see
+ * `segmentation.ts`); `findBackground` is a flood-fill fallback used when the
+ * model can't load. It works for clothes on a plain floor or wall.
  */
 
 export interface Rgba {
@@ -156,14 +156,27 @@ export function guessCategory(bbox: Box, foregroundRatio: number, imageArea: num
 }
 
 /**
- * Analyzes the photo and, when the background is detected, makes it
- * transparent in place. Returns what the registration screen needs: bbox for cropping,
- * dominant color, a category guess and photo-quality warnings.
+ * Flood-fill fallback (no AI model): makes a plain background transparent in
+ * place and analyzes the garment.
  */
 export function analyzeAndClean(img: Rgba): Analysis {
+  const mask = findBackground(img);
+  const alpha = new Uint8ClampedArray(mask.length);
+  for (let i = 0; i < mask.length; i++) alpha[i] = mask[i] ? 0 : 255;
+  return analyzeWithAlpha(img, alpha);
+}
+
+/**
+ * Applies a garment alpha matte (0 = background, 255 = garment) to the image
+ * in place and returns what the registration screen needs: bbox for
+ * cropping, dominant color, a category guess and photo-quality signals.
+ * If the matte covers almost nothing or almost everything it is treated as a
+ * failed cut-out and the photo is left untouched.
+ */
+export function analyzeWithAlpha(img: Rgba, alpha: Uint8ClampedArray): Analysis {
   const { data, width: w, height: h } = img;
   const sharpness = laplacianVariance(img);
-  const mask = findBackground(img);
+  const isFg = (p: number) => alpha[p] >= 128;
 
   let fg = 0;
   let minX = w;
@@ -172,7 +185,7 @@ export function analyzeAndClean(img: Rgba): Analysis {
   let maxY = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (mask[y * w + x]) continue;
+      if (!isFg(y * w + x)) continue;
       fg++;
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
@@ -181,8 +194,6 @@ export function analyzeAndClean(img: Rgba): Analysis {
     }
   }
   const ratio = fg / (w * h);
-  // If almost nothing (or almost everything) is foreground, the flood fill
-  // didn't find a clean background: keep the photo as is.
   const backgroundRemoved = ratio > 0.02 && ratio < 0.95;
 
   const bbox: Box = backgroundRemoved
@@ -195,14 +206,14 @@ export function analyzeAndClean(img: Rgba): Analysis {
     let edgeFg = 0;
     for (let x = 0; x < w; x++) {
       for (let y = 0; y < margin; y++) {
-        if (!mask[y * w + x]) edgeFg++;
-        if (!mask[(h - 1 - y) * w + x]) edgeFg++;
+        if (isFg(y * w + x)) edgeFg++;
+        if (isFg((h - 1 - y) * w + x)) edgeFg++;
       }
     }
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < margin; x++) {
-        if (!mask[y * w + x]) edgeFg++;
-        if (!mask[y * w + (w - 1 - x)]) edgeFg++;
+        if (isFg(y * w + x)) edgeFg++;
+        if (isFg(y * w + (w - 1 - x))) edgeFg++;
       }
     }
     touchesEdge = edgeFg / (2 * margin * (w + h)) > 0.05;
@@ -214,7 +225,7 @@ export function analyzeAndClean(img: Rgba): Analysis {
   const stride = Math.max(1, Math.floor(total / 6000));
   let seen = 0;
   for (let p = 0; p < w * h; p++) {
-    if (backgroundRemoved && mask[p]) continue;
+    if (backgroundRemoved && !isFg(p)) continue;
     if (seen++ % stride !== 0) continue;
     const i = p * 4;
     const key = nearestColorKey([data[i], data[i + 1], data[i + 2]]);
@@ -230,12 +241,7 @@ export function analyzeAndClean(img: Rgba): Analysis {
   }
 
   if (backgroundRemoved) {
-    for (let p = 0; p < w * h; p++) {
-      if (!mask[p]) continue;
-      const i = p * 4;
-      data[i] = data[i + 1] = data[i + 2] = 255;
-      data[i + 3] = 0; // transparent cut-out
-    }
+    for (let p = 0; p < w * h; p++) data[p * 4 + 3] = alpha[p];
   }
 
   return {
@@ -247,6 +253,48 @@ export function analyzeAndClean(img: Rgba): Analysis {
     colorKey,
     categoryGuess: guessCategory(bbox, ratio, w * h),
   };
+}
+
+/**
+ * Gentle "product photo" tone correction: stretches the garment's brightness
+ * range (dim phone photos look washed out) without touching hue. `strength`
+ * blends between the original (0) and a full stretch (1).
+ */
+export function autoLevels(img: Rgba, strength = 0.6) {
+  const { data } = img;
+  const n = data.length / 4;
+  const hist = new Uint32Array(256);
+  let count = 0;
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    if (data[i + 3] < 128) continue;
+    const l = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    hist[l]++;
+    count++;
+  }
+  if (count === 0) return;
+  const pct = (q: number) => {
+    let acc = 0;
+    for (let v = 0; v < 256; v++) {
+      acc += hist[v];
+      if (acc >= count * q) return v;
+    }
+    return 255;
+  };
+  const lo = pct(0.01);
+  const hi = pct(0.99);
+  // Already well exposed, or nearly flat (single-color item): leave it.
+  if (hi - lo > 220 || hi - lo < 20) return;
+  const scale = 255 / (hi - lo);
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    if (data[i + 3] === 0) continue;
+    for (let c = 0; c < 3; c++) {
+      const v = data[i + c];
+      const stretched = (v - lo) * scale;
+      data[i + c] = Math.round(v + (stretched - v) * strength);
+    }
+  }
 }
 
 /** Square crop around the garment with padding, clamped to the image. */

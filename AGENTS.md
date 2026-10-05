@@ -52,6 +52,7 @@ Docs: https://docs.expo.dev/eas/index.md
 
 - `src/domain/` — pure, tested logic (recommender, colors, image analysis, stats, dates). Keep it free of React/Supabase imports.
 - `src/lib/` — Supabase API, auth (`auth.tsx`), image processing (`image-processing.ts` native / `.web.ts` canvas).
+- Background removal (web): U²-Netp ONNX (`public/models/u2netp.onnx`) run with self-hosted onnxruntime-web (`public/ort`, copied on postinstall), then `refineAlpha` (threshold, close, fill holes, color-based floor-strip removal, open, blob cleanup, feather). Tune it against real photos, not synthetic shapes — `e2e/real/` has CC0 samples.
 - Temporary implementations meant to be swapped later: `signInWithPhone` (phone → synthetic email/password; replace with phone OTP), `recommendOutfits` (rule-based; replace/augment with an AI API), web-only background removal in `analyzeAndClean`.
 - RLS: clothes are visible to others only when part of a public outfit; OOTD photos are in the private `ootd` bucket.
 

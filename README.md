@@ -26,11 +26,13 @@ src/
   app/          화면 (Expo Router, 파일 = 화면)
   components/   UI 컴포넌트 (ui/ 기본 요소, closet/ 옷·코디 카드)
   domain/       순수 로직 — 코디 추천, 색 조합, 배경 제거, 통계 (테스트 있음)
-  lib/          Supabase 연결, 데이터 API(api.ts), 로그인(auth.tsx), 이미지 처리
+  lib/          Supabase 연결, 데이터 API(api.ts), 로그인(auth.tsx), 이미지 처리, AI 배경 제거(segment.web.ts)
 supabase/
   migrations/   DB 스키마 + 보안 규칙(RLS) + 사진 저장소
   tests/        보안 규칙 통합 테스트
-e2e/            브라우저 E2E 테스트 (Playwright)
+e2e/            브라우저 E2E 테스트 (Playwright) — real/ 은 CC0 실제 옷 사진
+public/models/  배경 제거 모델 (U²-Netp, Apache-2.0)
+scripts/        copy-ort.mjs: 설치 시 onnxruntime-web 런타임을 public/ort로 복사
 ```
 
 ## 처음 설정 (클라우드 Supabase)
@@ -47,7 +49,7 @@ e2e/            브라우저 E2E 테스트 (Playwright)
 | 기능 | 지금 | 나중에 |
 |---|---|---|
 | 로그인 | 전화번호만 입력 (번호 → 내부 이메일/비밀번호). **번호를 아는 사람은 누구나 로그인 가능** | Supabase 휴대폰 OTP(SMS) 인증 |
-| 배경 제거 | 브라우저에서 단색 배경을 지우는 방식 (웹만) | 배경 제거 API |
+| 배경 제거 | 무료 오픈소스 AI(U²-Netp, 4.6MB)를 브라우저에서 실행 + 경계 보정 · 그림자 · 밝기 보정 (웹만). 모델을 못 불러오면 단색 배경 방식으로 대체 | 주름 펴기 등 '상품컷 재생성'은 유료 이미지 AI(예: Gemini) |
 | 종류/색 자동 분류 | 색은 픽셀 분석, 종류는 옷 모양으로 추정 (웹만) | 이미지 인식 AI |
 | 코디 추천 | 규칙 기반: 색 조합 · 계절 · 최근 착용 기록 (`src/domain/recommend.ts`) | 외부 AI API로 교체/보강 |
 

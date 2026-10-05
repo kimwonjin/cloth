@@ -9,12 +9,14 @@ import { join } from 'node:path';
  */
 
 const PHOTOS = join(__dirname, 'photos');
+const REAL = join(__dirname, 'real');
 const SHOTS = process.env.SCREENSHOT_DIR ?? join(__dirname, 'screenshots');
 mkdirSync(SHOTS, { recursive: true });
 
 const run = String(Date.now()).slice(-8);
 const PHONE_A = `010${run}`;
 const PHONE_B = `011${run}`;
+const PHONE_C = `016${run}`;
 
 function todayKey() {
   const d = new Date();
@@ -323,4 +325,34 @@ test.describe('dark mode', () => {
     await page.getByTestId('tab-explore').click();
     await shot(page, '15-dark-explore');
   });
+});
+
+test('AI background removal on real photos (in-browser model)', async ({ page }) => {
+  test.setTimeout(240_000);
+  await login(page, PHONE_C);
+  const photos: [string, string][] = [
+    ['tshirt-stripe', 'top'],
+    ['pants-wood', 'bottom'],
+    ['pants-bed', 'bottom'],
+    ['shoes-wood', 'shoes'],
+    ['outer-bed', 'outer'],
+  ];
+  for (const [i, [file, category]] of photos.entries()) {
+    await page.goto('/clothing/new');
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByTestId('pick-library').click();
+    await (await chooser).setFiles(join(REAL, `${file}.jpg`));
+    await expect(page.getByTestId('cutout-ai')).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId('clothing-preview')).toBeVisible();
+    if (i === 0) await shot(page, '16-ai-cutout-preview');
+    await page.getByTestId(`category-${category}`).click();
+    await page.getByTestId('save-clothing').click();
+    await expect(page.getByTestId('toast')).toHaveText('옷장에 등록했어요');
+  }
+  await page.goto('/closet');
+  await expect(page.getByTestId('clothing-cell')).toHaveCount(5);
+  await shot(page, '17-ai-closet');
+  await page.goto('/');
+  await expect(page.getByTestId('suggestion').first()).toBeVisible();
+  await shot(page, '18-ai-home');
 });

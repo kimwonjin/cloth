@@ -12,5 +12,7 @@ export interface ProcessedClothingPhoto {
   image: UploadableImage;
   /** Null where pixel analysis isn't available (native for now). */
   analysis: Analysis | null;
+  /** How the background was removed: AI model, flood-fill fallback, or not at all. */
+  cutout: 'ai' | 'basic' | 'none';
   warnings: string[];
 }

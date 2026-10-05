@@ -13,7 +13,7 @@ async function resizeTo(uri: string, width: number): Promise<UploadableImage> {
 }
 
 export async function processClothingPhoto(uri: string): Promise<ProcessedClothingPhoto> {
-  return { image: await resizeTo(uri, 800), analysis: null, warnings: [] };
+  return { image: await resizeTo(uri, 800), analysis: null, cutout: 'none', warnings: [] };
 }
 
 export async function processOotdPhoto(uri: string): Promise<UploadableImage> {

@@ -1,6 +1,15 @@
-import { analyzeAndClean, qualityWarnings, squareCropAround } from '@/domain/image-analysis';
+import {
+  analyzeAndClean,
+  analyzeWithAlpha,
+  autoLevels,
+  qualityWarnings,
+  squareCropAround,
+  type Analysis,
+} from '@/domain/image-analysis';
+import { refineAlpha, resizeMask, U2NET_SIZE } from '@/domain/segmentation';
 
 import type { ProcessedClothingPhoto, UploadableImage } from './image-types';
+import { segmentGarment } from './segment.web';
 
 const CARD_SIZE = 720;
 
@@ -32,8 +41,10 @@ function toUploadable(blob: Blob): UploadableImage {
 }
 
 /**
- * Web: cuts the garment out of a plain background (transparent PNG), crops a
- * square around it and detects its dominant color, all in the browser.
+ * Web: cuts the garment out (U²-Netp model in the browser, flood fill as a
+ * fallback), tidies it into a product-style card (centered, tone-corrected,
+ * soft shadow, transparent PNG) and detects its dominant color — all free and
+ * on-device.
  */
 export async function processClothingPhoto(uri: string): Promise<ProcessedClothingPhoto> {
   const img = await loadImage(uri);
@@ -46,12 +57,30 @@ export async function processClothingPhoto(uri: string): Promise<ProcessedClothi
   work.height = h;
   const ctx = work.getContext('2d', { willReadFrequently: true })!;
   ctx.drawImage(img, 0, 0, w, h);
-  const pixels = ctx.getImageData(0, 0, w, h);
-  const analysis = analyzeAndClean({ data: pixels.data, width: w, height: h });
+  const original = ctx.getImageData(0, 0, w, h);
+
+  let analysis: Analysis | null = null;
+  let cutout: ProcessedClothingPhoto['cutout'] = 'none';
+  let pixels = original;
+  const prob = await segmentGarment(img);
+  if (prob) {
+    pixels = new ImageData(new Uint8ClampedArray(original.data), w, h);
+    const rgba = { data: pixels.data, width: w, height: h };
+    const alpha = refineAlpha(rgba, resizeMask(prob, U2NET_SIZE, U2NET_SIZE, w, h));
+    analysis = analyzeWithAlpha(rgba, alpha);
+    if (analysis.backgroundRemoved) cutout = 'ai';
+  }
+  if (cutout === 'none') {
+    pixels = new ImageData(new Uint8ClampedArray(original.data), w, h);
+    analysis = analyzeAndClean({ data: pixels.data, width: w, height: h });
+    if (analysis.backgroundRemoved) cutout = 'basic';
+  }
+  if (!analysis) throw new Error('사진을 분석하지 못했어요.');
+  if (analysis.backgroundRemoved) autoLevels({ data: pixels.data, width: w, height: h });
   ctx.putImageData(pixels, 0, 0);
 
   const crop = analysis.backgroundRemoved
-    ? squareCropAround(analysis.bbox, w, h)
+    ? squareCropAround(analysis.bbox, w, h, 0.1)
     : squareCropAround({ x: 0, y: 0, width: w, height: h }, w, h, 0);
   const out = document.createElement('canvas');
   out.width = CARD_SIZE;
@@ -64,12 +93,19 @@ export async function processClothingPhoto(uri: string): Promise<ProcessedClothi
   // Fit the (possibly out-of-bounds) square crop into the card; areas outside
   // the photo stay transparent (or white when the background was kept).
   const k = CARD_SIZE / crop.width;
+  if (analysis.backgroundRemoved) {
+    // Soft drop shadow so the cut-out sits on the board like a product shot.
+    octx.shadowColor = 'rgba(0, 0, 0, 0.16)';
+    octx.shadowBlur = CARD_SIZE * 0.025;
+    octx.shadowOffsetY = CARD_SIZE * 0.012;
+  }
   octx.drawImage(work, -crop.x * k, -crop.y * k, w * k, h * k);
 
   const blob = analysis.backgroundRemoved ? await canvasToPng(out) : await canvasToJpeg(out);
   return {
     image: toUploadable(blob),
     analysis,
+    cutout,
     warnings: qualityWarnings(analysis, img.naturalWidth, img.naturalHeight),
   };
 }

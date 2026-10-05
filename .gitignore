@@ -47,3 +47,6 @@ example
 e2e/photos/
 e2e/screenshots/
 e2e/test-results/
+
+# copied from node_modules on install
+public/ort/
