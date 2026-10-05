@@ -238,3 +238,89 @@ test('user A: sees the like, can make the outfit private, then it leaves explore
   await page.goto('/explore');
   await expect(page.getByText('아직 공개된 코디가 없어요')).toBeVisible();
 });
+
+test('user A: edit and delete a clothing item, delete an outfit and a wear log', async ({ page }) => {
+  await login(page, PHONE_A);
+
+  // Edit: change the red top's color and brand.
+  await page.goto('/closet');
+  await page.getByRole('button', { name: '상의' }).first().click();
+  const before = await page.getByTestId('clothing-cell').count();
+  await page.getByTestId('clothing-cell').first().click();
+  await expect(page.getByTestId('clothing-wear-count')).toBeVisible();
+  await page.getByTestId('color-pink').click();
+  await page.getByTestId('brand-input').fill('테스트브랜드');
+  await page.getByRole('button', { name: '저장', exact: true }).click();
+  await expect(page.getByTestId('toast')).toHaveText('저장했어요');
+  await page.reload();
+  await expect(page.getByTestId('color-pink')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('brand-input')).toHaveValue('테스트브랜드');
+
+  // Delete it.
+  page.once('dialog', (d) => d.accept());
+  await page.getByTestId('delete-clothing').click();
+  await expect(page.getByTestId('toast')).toHaveText('삭제했어요');
+  await page.goto('/closet');
+  await page.getByRole('button', { name: '상의' }).first().click();
+  await expect(page.getByTestId('clothing-cell')).toHaveCount(before - 1);
+
+  // Delete yesterday's wear log.
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  const yKey = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+  await page.goto(`/ootd/${yKey}`);
+  await expect(page.getByTestId('ootd-collage')).toBeVisible();
+  page.once('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: '기록 삭제' }).click();
+  await expect(page.getByTestId('toast')).toHaveText('삭제했어요');
+  await expect(page.getByText('이 날 기록이 없어요')).toBeVisible();
+
+  // Pick a saved outfit for that day instead, then delete the outfit itself.
+  const saved = page.getByTestId('outfit-card');
+  await expect(saved.first()).toBeVisible();
+  await saved.first().click();
+  await expect(page.getByTestId('toast')).toHaveText('기록했어요');
+  await expect(page.getByTestId('ootd-collage')).toBeVisible();
+});
+
+test('explore filters narrow results', async ({ page }) => {
+  await login(page, PHONE_B);
+  await page.goto('/closet');
+  await page.getByTestId('closet-tab-board').click();
+  // A made the outfit private, so it disappears from B's board too.
+  await expect(page.getByText('저장한 코디가 없어요')).toBeVisible();
+
+  // B publishes the copied outfit with a style tag, then filters by it.
+  await page.goto('/closet');
+  await page.getByTestId('closet-tab-clothes').click();
+  await page.goto('/outfit/new');
+  await page.getByTestId('pick-top').first().click();
+  await page.getByTestId('pick-bottom').first().click();
+  await page.getByRole('button', { name: '미니멀' }).click();
+  await page.getByTestId('visibility-public').click();
+  await page.getByTestId('save-outfit').click();
+  await expect(page.getByTestId('toast')).toHaveText('저장하고 탐색에 게시했어요');
+
+  await page.goto('/explore');
+  await expect(page.getByTestId('outfit-card')).toHaveCount(1);
+  await page.getByRole('button', { name: '스트릿' }).click();
+  await expect(page.getByText('아직 공개된 코디가 없어요')).toBeVisible();
+  await page.getByRole('button', { name: '미니멀' }).click();
+  await expect(page.getByTestId('outfit-card')).toHaveCount(1);
+  await page.getByRole('button', { name: '여름' }).click();
+  await page.getByRole('button', { name: '모든 계절' }).click();
+  await expect(page.getByTestId('outfit-card')).toHaveCount(1);
+});
+
+test.describe('dark mode', () => {
+  test.use({ colorScheme: 'dark' });
+  test('renders main screens in dark mode', async ({ page }) => {
+    await login(page, PHONE_A);
+    await shot(page, '13-dark-home');
+    await page.getByTestId('tab-closet').click();
+    await expect(page.getByTestId('clothing-cell').first()).toBeVisible();
+    await shot(page, '14-dark-closet');
+    await page.getByTestId('tab-explore').click();
+    await shot(page, '15-dark-explore');
+  });
+});

@@ -43,6 +43,29 @@ Docs: https://docs.expo.dev/eas/index.md
 ## Project workflow
 
 - Solo developer, cloud-only (no local machine). Push verified changes directly to `main`; no PRs needed.
-- Web-first: the app is developed and deployed as a web app on Vercel (`vercel.json`, auto-deploys from `main`). Native iOS/Android builds via EAS come later.
-- Backend is Supabase (cloud project). Client lives in `src/lib/supabase.ts`; schema changes go in `supabase/migrations/`.
-- Verify before pushing: `npx tsc --noEmit` and `npx expo export --platform web`.
+- Web-first: the app is developed and deployed as a web app on Vercel (`vercel.json`, SPA output, auto-deploys from `main`). Native iOS/Android builds via EAS come later.
+- Backend is Supabase (cloud project). Client lives in `src/lib/supabase.ts`; all data access goes through `src/lib/api.ts`.
+- Schema changes: add a NEW file in `supabase/migrations/` (never edit an applied one). The user applies it in the Supabase SQL Editor.
+- UI copy is Korean.
+
+## Architecture
+
+- `src/domain/` — pure, tested logic (recommender, colors, image analysis, stats, dates). Keep it free of React/Supabase imports.
+- `src/lib/` — Supabase API, auth (`auth.tsx`), image processing (`image-processing.ts` native / `.web.ts` canvas).
+- Temporary implementations meant to be swapped later: `signInWithPhone` (phone → synthetic email/password; replace with phone OTP), `recommendOutfits` (rule-based; replace/augment with an AI API), web-only background removal in `analyzeAndClean`.
+- RLS: clothes are visible to others only when part of a public outfit; OOTD photos are in the private `ootd` bucket.
+
+## Verifying changes
+
+Docker is available in the cloud container, so a full local Supabase can run:
+
+```bash
+npx tsc --noEmit && npx expo lint && npx jest
+npx supabase start            # first time pulls images
+npx supabase db reset         # applies migrations
+SUPABASE_ANON_KEY=... npm run test:db
+EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=... npx expo export --platform web
+PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run test:e2e
+```
+
+If `expo install`/`expo lint` fail on network, prefix with `EXPO_OFFLINE=1`.
